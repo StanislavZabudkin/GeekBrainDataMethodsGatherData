@@ -1,88 +1,236 @@
 #https://hh.ru/search/vacancy?only_with_salary=false&clusters=true&enable_snippets=true&salary=&st=searchVacancy&text=java
 import requests
+import time
 import re
 from bs4 import BeautifulSoup as bs
 from pprint import pprint
+
+from pymongo import MongoClient
 import lxml
 
-headers = requests.utils.default_headers()
-headers.update(
-    {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.92 YaBrowser/19.10.1.168 (beta) Yowser/2.5 Safari/537.36'
-    }
-)
+nextlaunch = 1
+
+client = MongoClient('localhost',27017)
+db = client["references_db"]
+
+#########################################
+#
+#  function calculateNumberOfRecordsBasicTable
+#
+#########################################
+def calculatenumberofrecordsbasictable():
+    refCollections = db.references
+    return db.references.count_documents({})
+
+
+############################################
+##
+##
+##
+############################################
+
+def selectNewVacancies():
+    refCollectionsNew = db.referencesNew
+    refCollectionsNew.aggregate([
+        {'$lookup':
+            {'from': "references",
+                    'localField':"href",
+	                'foreignField':"href",
+	                'as': "references"
+                }
+            },
+            {'$match': {'references': {'$eq': []}}}
+        ])
+
+
+
+#########################################
+#
+#  function insertIntoDatabase
+#
+#########################################
+def insertreferences(recs):
+    if nextlaunch == 1:
+        refCollectionsNew = db.referencesNew
+        refCollectionsNew.insert_many(recs)
+    else:
+            refCollections = db.references
+            refCollections.insert_many(recs)
+
+
+
+
+#########################################
+#
+#  function selectDatabase
+#
+#########################################
+def selectreferences(les):
+    refCollections = db.references
+    print(les)
+    return refCollections.find({'max_oklad':{'$gte':les}})
+
+#####################################################
+#
+#  function select from both collections new and old
+#
+#####################################################
+def selectreferences(les):
+    refCollections = db.references
+    print(les)
+    return refCollections.find({'max_oklad':{'$gte':les}})
+
+#refDb.insert_one({"author":"joHn","age":26,"TXTFI":"JOHN HI !"})
+#refDb.insert_one({"author":"joHn","age":26,"TXTFI":"JOHN HI !"})
+#refDb.insert_many([{},{}])
+
+#allRefers = refDb.find()
+# refDb.
+
+#objects = users.find().sort('age').limit(2)
+#objects = users.find()
+
+#for refCy in allRefers:
+#    pprint(refCy)
+
+numberOfPages = 3
+maxSum = 100000
+
 
 search_word = 'java'
-main_link = ('https://www.hh.ru/search/vacancy')
+
+main_link = ('https://www.hh.ru')
+addSearchLink = '/search/vacancy'
 only_with_salary = 'false'
 clusters = 'true'
 enable_snippets='true'
 st = 'searchVacancy'
-html = requests.get(f'{main_link}?only_with_salary={only_with_salary}&clusters={clusters}&enable_snippets={enable_snippets}&salary=&st={st}&text={search_word}', headers=headers).text
-#print(html)
-
-#req = requests.get(f'{main_link}?q={city}&appid={appid}')
-
-#print(html)
-
-parsed_html = bs(html,'lxml')
-
 nonBreakSpace = u'\xa0'
 
+icount = 0
+
+#########################################
+#  function create request to the site
+#########################################
+
+def initialRequest(first, next_link_for_request):
+    headers = requests.utils.default_headers()
+    headers.update(
+        {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.92 YaBrowser/19.10.1.168 (beta) Yowser/2.5 Safari/537.36'
+        }
+    )
+    html = ''
+    print(first,next_link_for_request)
+    if first == 0:
+        html = requests.get(f'{main_link+addSearchLink}?only_with_salary={only_with_salary}&clusters={clusters}&enable_snippets={enable_snippets}&salary=&st={st}&text={search_word}', headers=headers).text
+    else:
+        html = requests.get(f'{main_link+addSearchLink}?L_is_autosearch=false&clusters={clusters}&enable_snippets={enable_snippets}&text={search_word}&page={str(first)}', headers=headers).text
+
+#objects = users.find().sort('age').limit(2)
+#objects = users.find('age':{'$lte':25}),{'author','age'})
+# users.update_many({'author':'Pete'},{'$set':{'age':14}})
+# users.delete_one({'author':'Mike'})
+
+#count = users.count_documents({'age':{'$lte':25}})
+
+
+#    print(html)
+#req = requests.get(f'{main_link}?q={city}&appid={appid}')
+#print(html)
+    parsed_html = bs(html,'lxml')
+    return parsed_html
+
 #print(parsed_html)
+next_link_for_request = ''
+while icount < numberOfPages :
+    time.sleep(3)
+    print(" next link for request " + next_link_for_request )
+    parsed_html = initialRequest(icount, next_link_for_request)
 
-vacancy_block = parsed_html.find('div',{'class':'vacancy-serp'}) #vacancy-serp__vacancy vacancy-serp__vacancy_premium
+    icount = icount + 1
 
-resultData = []
-
-#pprint(films_block)
-vacancy_list = vacancy_block.findChildren(recursive=False)
-#pprint(vacancy_list)
-for vac in vacancy_list:
-    recData = {}
-    recData['site'] = 'hh'
-
-#    print(vac)
-#    vac.find('a',{'data-qa':'vacancy-serp__vacancy-title'}).findChild()
-    if vac.find('a',{'data-qa':'vacancy-serp__vacancy-title'}) != None:
-        pprint(vac.find('span',{'class':'g-user-content'}).findChild().text)
-        recData['NamePosition'] = vac.find('span',{'class':'g-user-content'}).findChild().text
-        pprint(vac.find('span',{'class':'g-user-content'}).find('a',{'class':'bloko-link HH-LinkModifier'})['href'])
-        recData['href'] = vac.find('span',{'class':'g-user-content'}).find('a',{'class':'bloko-link HH-LinkModifier'})['href']
+    vacancy_block = parsed_html.find('div',{'class':'vacancy-serp'}) #vacancy-serp__vacancy vacancy-serp__vacancy_premium
+    next_block = parsed_html.find('a',{'class':'bloko-button HH-Pager-Controls-Next HH-Pager-Control'})
+    print(next_block)
+    print(next_block['href'])
+    next_link_for_request = main_link + next_block['href']
 
 
-    varPrice = vac.find('div',{'class':'vacancy-serp-item__sidebar'})
-    min_oklad = 0
-    max_oklad = 0
 
-    recData['min_oklad'] = min_oklad
-    recData['max_oklad'] = max_oklad
+    print(next_block)
+
+    resultData = []
+
+    #pprint(films_block)
+    vacancy_list = vacancy_block.findChildren(recursive=False)
+    #pprint(vacancy_list)
+    for vac in vacancy_list:
+        recData = {}
+        recData['site'] = 'hh'
+
+    #    print(vac)
+    #    vac.find('a',{'data-qa':'vacancy-serp__vacancy-title'}).findChild()
+        if vac.find('a',{'data-qa':'vacancy-serp__vacancy-title'}) != None:
+            pprint(vac.find('span',{'class':'g-user-content'}).findChild().text)
+            recData['NamePosition'] = vac.find('span',{'class':'g-user-content'}).findChild().text
+            pprint(vac.find('span',{'class':'g-user-content'}).find('a',{'class':'bloko-link HH-LinkModifier'})['href'])
+            recData['href'] = vac.find('span',{'class':'g-user-content'}).find('a',{'class':'bloko-link HH-LinkModifier'})['href']
 
 
-    if varPrice != None and varPrice.findChild() != None:
-        pprint(varPrice.findChild().text)
-        vtxt = varPrice.findChild().text
-        vtxt = vtxt.replace(nonBreakSpace,'')
- #       print(vtxt[:2])
-        if vtxt[:2] == 'от':
-            vtxt = vtxt[3:]
-            min_oklad = int(re.sub("[^0-9]", "", vtxt))
-            recData['min_oklad'] = min_oklad
+        varPrice = vac.find('div',{'class':'vacancy-serp-item__sidebar'})
+        min_oklad = 0
+        max_oklad = 0
 
-        else:
-            pos_ = vtxt.find('-')
-            min_oklad = int(re.sub("[^0-9]", "", vtxt[:pos_]))
-            max_oklad = int(re.sub("[^0-9]", "", vtxt[pos_:]))
-            recData['min_oklad'] = min_oklad
-            recData['max_oklad'] = max_oklad
-#        varPriceTxt =  re.sub("[^0-9]", "", "sdkjh987978asd098as0980a98sd")
-#      pprint(" --- " +  vtxt+ " " + str(min_oklad) + " " + str(max_oklad))
-    resultData.append(recData)
+        recData['min_oklad'] = min_oklad
+        recData['max_oklad'] = max_oklad
+
+
+        if varPrice != None and varPrice.findChild() != None:
+            pprint(varPrice.findChild().text)
+            vtxt = varPrice.findChild().text
+            vtxt = vtxt.replace(nonBreakSpace,'')
+     #       print(vtxt[:2])
+            if vtxt[:2] == 'от':
+                vtxt = vtxt[3:]
+                min_oklad = int(re.sub("[^0-9]", "", vtxt))
+                recData['min_oklad'] = min_oklad
+                recData['max_oklad'] = 1000000000
+            elif vtxt[:2] == 'до':
+                vtxt = vtxt[3:]
+                max_oklad = int(re.sub("[^0-9]", "", vtxt))
+                recData['max_oklad'] = max_oklad
+            else:
+                pos_ = vtxt.find('-')
+                min_oklad = int(re.sub("[^0-9]", "", vtxt[:pos_]))
+                max_oklad = int(re.sub("[^0-9]", "", vtxt[pos_:]))
+                recData['min_oklad'] = min_oklad
+                recData['max_oklad'] = max_oklad
+
+
+
+    #        varPriceTxt =  re.sub("[^0-9]", "", "sdkjh987978asd098as0980a98sd")
+    #      pprint(" --- " +  vtxt+ " " + str(min_oklad) + " " + str(max_oklad))
+        resultData.append(recData)
 
 pprint(resultData)
 
+#
+#  append insertreferences
+#
+insertreferences(resultData)
 
+resUl = selectreferences(maxSum)
 
+#print(resUl.length)
+
+for itemCur in resUl:
+    pprint(itemCur)
+
+pprint(f' base table number of records ' + str(calculatenumberofrecordsbasictable()))
+
+# select new vacancies only
+selectNewVacancies
 
 # only_with_salary=false&clusters=true&enable_snippets=true&salary=&st=searchVacancy&text=java
 
